@@ -53,6 +53,8 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 .songbar .sname{font-family:'Press Start 2P',monospace;font-size:16px;color:var(--yellow);text-shadow:2px 2px 0 var(--neon);flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .songbar .meta{font-size:15px;color:var(--cyan);white-space:nowrap;}
 .fontctl{display:flex;gap:4px;}
+.tposectl{display:flex;gap:4px;align-items:center;}
+.tposectl #tposeLbl{min-width:34px;text-align:center;background:var(--cyan);}
 .song-body{flex:1;min-height:0;overflow:hidden;column-gap:20px;column-fill:balance;}
 .song-body.scroll{overflow-y:auto;column-count:1!important;scrollbar-width:thin;scrollbar-color:var(--neon) transparent;}
 .song-body.scroll::-webkit-scrollbar{width:10px;}
@@ -104,6 +106,11 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
     <button class="btn sm" id="syncBtnSong" title="Sync from Google Sheets" onclick="syncFromSheets()">&#8635;</button>
     <span class="sname" id="songTitle"></span>
     <span class="meta" id="songMeta"></span>
+    <span class="tposectl" id="tposeCtl" title="Transpose chords">
+      <button class="btn sm" onclick="changeTpose(-1)" title="Down a semitone">&#9837;</button>
+      <button class="btn sm" id="tposeLbl" onclick="resetTpose()" title="Reset to original key">0</button>
+      <button class="btn sm" onclick="changeTpose(1)" title="Up a semitone">&#9839;</button>
+    </span>
     <span class="fontctl">
       <button class="btn sm" id="modeBtn" title="Fit-to-page / Scroll" onclick="toggleMode()">FIT</button>
       <button class="btn sm" onclick="bump(-1)">A&#8722;</button>
@@ -143,7 +150,7 @@ function buildRoster(){
   PLAYERS=all.map((k,i)=>{const ins=INSTRUMENTS[k]||DEFAULT_INSTR;
     return {key:k,role:ins.role,ava:ins.ava,chords:ins.chords!==false,tag:'P'+(i+1)};});
 }
-let CUR=null, curSongIndex=null, userFS=null, dataSource='built-in', lastSync=null, cbId=0;
+let CUR=null, curSongIndex=null, userFS=null, dataSource='built-in', lastSync=null, cbId=0, tpose=0;
 
 try{
   const c=JSON.parse(localStorage.getItem('aarpo_data')||'null');
@@ -296,10 +303,41 @@ function setHeadrow(){
   else{hr.style.gridTemplateColumns='1.3fr 1fr';
     hr.innerHTML='<span class="a">SECTION / LINE</span><span class="c">'+you+'</span>';}
 }
+// ---------- chord transposition (always spells with sharps, like the sheet) ----------
+const SHARP=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const NOTE_IDX={C:0,'C#':1,DB:1,D:2,'D#':3,EB:3,E:4,'E#':5,FB:4,F:5,'F#':6,GB:6,G:7,'G#':8,AB:8,A:9,'A#':10,BB:10,B:11,'B#':0,CB:11};
+function transposeNote(L,acc,steps){
+  const key=(L+(acc||'')).toUpperCase().replace('♯','#').replace('♭','B');
+  const idx=NOTE_IDX[key];
+  if(idx==null) return L+(acc||'');
+  return SHARP[((idx+steps)%12+12)%12];
+}
+// shift only chord roots (and bass notes after '/'); leave suffixes, spacing, text intact
+function transposeChords(text,steps){
+  if(!steps||!text) return text;
+  return text.replace(/([A-G])(#|b|♯|♭)?/g,(m,L,acc,offset,str)=>{
+    const prev=offset>0?str[offset-1]:'';
+    if(prev && /[A-Za-z]/.test(prev)) return m;            // mid-word, not a chord
+    const fc=str.charAt(offset+m.length);
+    if(fc && /[a-z]/.test(fc) && 'masd'.indexOf(fc)<0) return m;  // followed by a word
+    return transposeNote(L,acc,steps);
+  });
+}
+function changeTpose(d){blip(d>0?700:500,0.05);
+  tpose=Math.max(-11,Math.min(11,tpose+d));updateTposeLabel();renderSong();}
+function resetTpose(){if(!tpose)return;blip(440,0.05);tpose=0;updateTposeLabel();renderSong();}
+function updateTposeLabel(){const el=document.getElementById('tposeLbl');
+  if(el)el.textContent=(tpose>0?'+'+tpose:''+tpose);}
+
 function openSong(i){
-  curSongIndex=i;userFS=null;const s=DATA.songs[i];
+  curSongIndex=i;userFS=null;tpose=0;updateTposeLabel();
+  renderSong();
+}
+function renderSong(){
+  const s=DATA.songs[curSongIndex];
   document.getElementById('songTitle').textContent=s.name;
-  document.getElementById('songMeta').innerHTML=String(i+1).padStart(2,'0')+'/'+DATA.songs.length+' '+(CUR.role||'');
+  document.getElementById('songMeta').innerHTML=String(curSongIndex+1).padStart(2,'0')+'/'+DATA.songs.length+' '+(CUR.role||'');
+  document.getElementById('tposeCtl').style.display=CUR.chords?'':'none';
   setHeadrow();
   const body=document.getElementById('songBody');body.innerHTML='';
   body.classList.toggle('nochords', !CUR.chords);
@@ -315,7 +353,8 @@ function openSong(i){
     const row=document.createElement('div');row.className='row';
     const tm=r.times?'<span class="tm">'+esc(r.times)+'</span>':'';
     const mineHtml=(mine&&mine!=='-')?'<div class="c-mine">'+esc(mine)+'</div>':'<div class="c-mine empty">&middot;</div>';
-    const chordCell=CUR.chords?('<div class="c-chord">'+(esc(r.chords)||'<span class="dim">&mdash;</span>')+'</div>'):'';
+    const chordTxt=r.chords?esc(transposeChords(r.chords,tpose)):'<span class="dim">&mdash;</span>';
+    const chordCell=CUR.chords?('<div class="c-chord">'+chordTxt+'</div>'):'';
     row.innerHTML='<div class="c-line">'+(esc(r.line)||'<span class="dim">(inst.)</span>')+tm+'</div>'+chordCell+mineHtml;
     secEl.appendChild(row);
   });
