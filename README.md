@@ -7,7 +7,7 @@ Just **double-click `index.html`** — it opens in your default browser. No inst
 
 ## Flow
 1. **Select your player** — the roster (names + roles) comes from the PLAYER/ROLE table at the bottom of the LEGEND sheet. Roles set each player's instrument icon; drums/percussion get a no-chords structure view.
-2. **Select a track** — songs are numbered in the sheet's tab order (🎯 marks tracks where your part is written).
+2. **Select a track** — the setlist order is taken from the LEGEND song table (top to bottom); tabs not listed there are appended at the end (🎯 marks tracks where your part is written).
 3. **Play** — the whole song fits on one screen (no scrolling) in three columns:
    **LINE · CHORDS · YOUR PART**. Auto-fits font/columns; `A+`/`A−` or `+`/`−` to resize, `Esc` to go back. **FIT/SCROLL** toggles single-page vs scrollable. **♭/♯** transpose the chords.
 
