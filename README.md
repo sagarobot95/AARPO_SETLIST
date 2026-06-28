@@ -3,7 +3,7 @@
 A retro, 80s Sega-arcade themed web app for the AARPO band's set list and chords.
 
 ## Use it
-Just **double-click `AARPO_SetList.html`** — it opens in your default browser. No install, no server, works offline (all 19 songs are embedded in the file).
+Just **double-click `index.html`** — it opens in your default browser. No install, no server, works offline (all 19 songs are embedded in the file).
 
 ## Flow
 1. **Select your player** — Vijith, Sagar, Shreddu or Akhil.
@@ -12,5 +12,5 @@ Just **double-click `AARPO_SetList.html`** — it opens in your default browser.
    **LINE · CHORDS · YOUR PART**. Auto-fits font/columns; `A+`/`A−` or `+`/`−` to resize, `Esc` to go back.
 
 ## Files
-- `AARPO_SetList.html` — the app (self-contained).
-- `AARPO CHORDS Structure.xlsx` — source spreadsheet (one sheet per song).
+- `index.html` — the app (self-contained).
+- `AARPO CHORDS STRUCTURE.xlsx` — source spreadsheet (one sheet per song).
