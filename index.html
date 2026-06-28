@@ -54,6 +54,11 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 .songbar .meta{font-size:15px;color:var(--cyan);white-space:nowrap;}
 .fontctl{display:flex;gap:4px;}
 .song-body{flex:1;min-height:0;overflow:hidden;column-gap:20px;column-fill:balance;}
+.song-body.scroll{overflow-y:auto;column-count:1!important;scrollbar-width:thin;scrollbar-color:var(--neon) transparent;}
+.song-body.scroll::-webkit-scrollbar{width:10px;}
+.song-body.scroll::-webkit-scrollbar-thumb{background:var(--neon);border-radius:6px;}
+.song-body.nochords .row{grid-template-columns:1.3fr 1fr;}
+.song-body.nochords .c-chord{display:none;}
 .section{break-inside:auto;margin-bottom:6px;}
 .sechead{font-family:'Press Start 2P',monospace;font-size:calc(var(--fs)*0.62);color:#fff;background:var(--purple);padding:4px 7px;letter-spacing:1px;text-shadow:1px 1px 0 #000;break-after:avoid;margin-bottom:2px;}
 .row{display:grid;grid-template-columns:1.1fr 1.15fr 1fr;gap:8px;padding:2px 6px;align-items:start;break-inside:avoid;border-bottom:1px solid rgba(0,240,255,.12);}
@@ -100,12 +105,13 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
     <span class="sname" id="songTitle"></span>
     <span class="meta" id="songMeta"></span>
     <span class="fontctl">
+      <button class="btn sm" id="modeBtn" title="Fit-to-page / Scroll" onclick="toggleMode()">FIT</button>
       <button class="btn sm" onclick="bump(-1)">A&#8722;</button>
       <button class="btn sm" onclick="bump(1)">A+</button>
     </span>
     <span class="badge" id="whoBadge2">P1</span>
   </div>
-  <div class="headrow"><span class="a">LINE</span><span class="b">CHORDS</span><span class="c">YOU &#9656; <span id="youName">P</span></span></div>
+  <div class="headrow" id="headRow"><span class="a">LINE</span><span class="b">CHORDS</span><span class="c">YOU &#9656; <span id="youName">P</span></span></div>
   <div class="song-body" id="songBody"></div>
 </section>
 <script>
@@ -116,14 +122,15 @@ const SHEET_NAMES = ["Aigiri Nandini", "Param Sundari", "Pachai Nirame", "Madura
 // Instrument per player. Add new names here as instrumentalists join.
 // Anyone not listed defaults to Guitar. Players themselves are detected
 // automatically from the columns in the sheets (sync picks up new ones).
-const GUITAR={role:'Guitar',ava:'\u{1F3B8}'};
-const DRUMS={role:'Drums',ava:'\u{1F941}'};
+// chords:false -> structure view (sections + own part, no chords). Use for drums/vocals.
+const GUITAR={role:'Guitar',ava:'\u{1F3B8}',chords:true};
+const DRUMS={role:'Drums',ava:'\u{1F941}',chords:false};
 const INSTRUMENTS = {
   VIJITH:GUITAR, SAGAR:GUITAR, SHREDDU:GUITAR, AKHIL:GUITAR,
   PRABHA:DRUMS,
   // examples for later: RAHUL:{role:'Keys',ava:'\u{1F3B9}'}, NEHA:{role:'Violin',ava:'\u{1F3BB}'},
 };
-const DEFAULT_INSTR={role:'Guitar',ava:'\u{1F3B8}'};
+const DEFAULT_INSTR={role:'Guitar',ava:'\u{1F3B8}',chords:true};
 // Preferred display order on the SELECT PLAYER screen; unknown names appended A-Z.
 const PREFERRED=['VIJITH','SAGAR','SHREDDU','AKHIL','PRABHA'];
 let PLAYERS=[];
@@ -134,7 +141,7 @@ function buildRoster(){
   all.sort((a,b)=>{let ia=PREFERRED.indexOf(a),ib=PREFERRED.indexOf(b);
     if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib || a.localeCompare(b);});
   PLAYERS=all.map((k,i)=>{const ins=INSTRUMENTS[k]||DEFAULT_INSTR;
-    return {key:k,role:ins.role,ava:ins.ava,tag:'P'+(i+1)};});
+    return {key:k,role:ins.role,ava:ins.ava,chords:ins.chords!==false,tag:'P'+(i+1)};});
 }
 let CUR=null, curSongIndex=null, userFS=null, dataSource='built-in', lastSync=null, cbId=0;
 
@@ -277,11 +284,25 @@ function updateStatus(){
 }
 function setStatus(html,color){const el=document.getElementById('syncStatus');el.innerHTML=html;el.style.color=color||'#9fb';}
 
+const SCROLL_FS=22;
+let viewMode='fit';
+try{const vm=localStorage.getItem('aarpo_viewmode');if(vm==='scroll'||vm==='fit')viewMode=vm;}catch(e){}
+function updateModeBtn(){const b=document.getElementById('modeBtn');if(b)b.textContent=(viewMode==='scroll'?'SCROLL':'FIT');}
+function setHeadrow(){
+  const hr=document.getElementById('headRow');if(!hr)return;
+  const you='YOU &#9656; '+esc(CUR.key);
+  if(CUR.chords){hr.style.gridTemplateColumns='1.1fr 1.15fr 1fr';
+    hr.innerHTML='<span class="a">LINE</span><span class="b">CHORDS</span><span class="c">'+you+'</span>';}
+  else{hr.style.gridTemplateColumns='1.3fr 1fr';
+    hr.innerHTML='<span class="a">SECTION / LINE</span><span class="c">'+you+'</span>';}
+}
 function openSong(i){
   curSongIndex=i;userFS=null;const s=DATA.songs[i];
   document.getElementById('songTitle').textContent=s.name;
-  document.getElementById('songMeta').innerHTML=String(i+1).padStart(2,'0')+'/'+DATA.songs.length;
+  document.getElementById('songMeta').innerHTML=String(i+1).padStart(2,'0')+'/'+DATA.songs.length+' '+(CUR.role||'');
+  setHeadrow();
   const body=document.getElementById('songBody');body.innerHTML='';
+  body.classList.toggle('nochords', !CUR.chords);
   if(!songHasContent(s)){body.innerHTML='<div class="note">No chords entered for this track yet</div>';show('screen-song');return;}
   let secEl=null;
   s.rows.forEach(r=>{
@@ -294,11 +315,23 @@ function openSong(i){
     const row=document.createElement('div');row.className='row';
     const tm=r.times?'<span class="tm">'+esc(r.times)+'</span>':'';
     const mineHtml=(mine&&mine!=='-')?'<div class="c-mine">'+esc(mine)+'</div>':'<div class="c-mine empty">&middot;</div>';
-    row.innerHTML='<div class="c-line">'+(esc(r.line)||'<span class="dim">(inst.)</span>')+tm+'</div>'+
-       '<div class="c-chord">'+(esc(r.chords)||'<span class="dim">&mdash;</span>')+'</div>'+mineHtml;
+    const chordCell=CUR.chords?('<div class="c-chord">'+(esc(r.chords)||'<span class="dim">&mdash;</span>')+'</div>'):'';
+    row.innerHTML='<div class="c-line">'+(esc(r.line)||'<span class="dim">(inst.)</span>')+tm+'</div>'+chordCell+mineHtml;
     secEl.appendChild(row);
   });
-  show('screen-song');requestAnimationFrame(()=>fitToScreen());
+  show('screen-song');requestAnimationFrame(reflow);
+}
+// choose layout based on the active view mode
+function reflow(){
+  const body=document.getElementById('songBody');
+  if(viewMode==='scroll'){
+    body.classList.add('scroll');
+    apply(userFS||SCROLL_FS,1);
+    body.scrollTop=0;
+  }else{
+    body.classList.remove('scroll');
+    fitToScreen();
+  }
 }
 function fitToScreen(){const body=document.getElementById('songBody');
   if(userFS){apply(userFS,chooseCols(userFS));return;}
@@ -312,11 +345,15 @@ function apply(fs,cols){document.documentElement.style.setProperty('--fs',fs+'px
   document.getElementById('songBody').style.columnCount=cols;}
 function bump(dir){blip(dir>0?880:440,0.05);
   const cur=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--fs'))||18;
-  userFS=Math.max(9,Math.min(34,cur+dir*2));apply(userFS,chooseCols(userFS));}
-window.addEventListener('resize',()=>{if(document.body.classList.contains('songmode')&&curSongIndex!=null){
-  if(userFS)apply(userFS,chooseCols(userFS));else fitToScreen();}});
+  userFS=Math.max(9,Math.min(40,cur+dir*2));reflow();}
+function toggleMode(){blip(520,0.05);
+  viewMode=(viewMode==='scroll'?'fit':'scroll');userFS=null;
+  try{localStorage.setItem('aarpo_viewmode',viewMode);}catch(e){}
+  updateModeBtn();reflow();}
+window.addEventListener('resize',()=>{if(document.body.classList.contains('songmode')&&curSongIndex!=null)reflow();});
 document.addEventListener('keydown',e=>{if(!document.body.classList.contains('songmode'))return;
   if(e.key==='Escape')goTracks();if(e.key==='+'||e.key==='=')bump(1);if(e.key==='-')bump(-1);});
+updateModeBtn();
 function esc(t){return(t==null?'':String(t)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 buildRoster();buildPlayers();show('screen-player');
