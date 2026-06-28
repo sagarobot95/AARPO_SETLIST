@@ -96,6 +96,7 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 <section id="screen-song">
   <div class="songbar">
     <button class="btn sm" onclick="goTracks()">&#9668; TRACKS</button>
+    <button class="btn sm" id="syncBtnSong" title="Sync from Google Sheets" onclick="syncFromSheets()">&#8635;</button>
     <span class="sname" id="songTitle"></span>
     <span class="meta" id="songMeta"></span>
     <span class="fontctl">
@@ -197,17 +198,29 @@ function gvizToSong(name,resp){
 }
 async function syncFromSheets(){
   const btn=document.getElementById('syncBtn');
-  setStatus('<span class="spin">&#8635;</span> SYNCING...','#ffe600');btn.disabled=true;
+  const sbtn=document.getElementById('syncBtnSong');
+  setStatus('<span class="spin">&#8635;</span> SYNCING...','#ffe600');
+  if(btn)btn.disabled=true;
+  if(sbtn){sbtn.disabled=true;sbtn.innerHTML='<span class="spin">&#8635;</span>';}
   try{
     const songs=await Promise.all(SHEET_NAMES.map(n=>jsonp(n).then(r=>gvizToSong(n,r))));
     DATA.songs=songs;dataSource='synced';lastSync=Date.now();
     try{localStorage.setItem('aarpo_data',JSON.stringify({t:lastSync,songs:songs}));}catch(e){}
     buildTracks();updateStatus();blip(990,0.08);
+    if(document.body.classList.contains('songmode') && curSongIndex!=null) openSong(curSongIndex);
+    if(sbtn)flashSongSync('&#10003;','#39ff14');
   }catch(e){
     setStatus('X SYNC FAILED - check Wi-Fi / sheet sharing. Using '+(dataSource==='built-in'?'built-in':'saved')+' copy.','#ff7a7a');
     blip(160,0.15,'sawtooth');
-  }finally{btn.disabled=false;}
+    if(sbtn)flashSongSync('X','#ff7a7a');
+  }finally{
+    if(btn)btn.disabled=false;
+    if(sbtn)sbtn.disabled=false;
+  }
 }
+function flashSongSync(sym,color){const sbtn=document.getElementById('syncBtnSong');if(!sbtn)return;
+  sbtn.innerHTML=sym;sbtn.style.background=color;
+  setTimeout(()=>{sbtn.innerHTML='&#8635;';sbtn.style.background='';},1400);}
 function updateStatus(){
   if(dataSource==='synced'||dataSource==='saved'){
     const d=lastSync?new Date(lastSync):null;
