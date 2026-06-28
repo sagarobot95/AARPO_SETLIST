@@ -54,7 +54,9 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 .songbar .meta{font-size:15px;color:var(--cyan);white-space:nowrap;}
 .fontctl{display:flex;gap:4px;}
 .metbar{display:flex;gap:5px;align-items:center;flex-wrap:wrap;margin:3px 0;}
-.metbar .metplay{min-width:74px;background:var(--neon);color:#fff;}
+.metplays{display:flex;gap:5px;}
+.metbar .metplay{min-width:70px;background:var(--neon);color:#fff;}
+.metbar .metplay.sel{background:var(--cyan);color:#000;}
 .metbar .metplay.on{background:var(--green);color:#000;}
 .metbar .metsnd{background:#fff;min-width:64px;}
 .metvol{font-family:'Press Start 2P',monospace;font-size:10px;color:var(--cyan);min-width:14px;text-align:center;}
@@ -132,7 +134,7 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
     <span class="badge" id="whoBadge2">P1</span>
   </div>
   <div class="metbar" id="metBar">
-    <button class="btn sm metplay" id="metPlay" onclick="metToggle()" title="Start / stop metronome">&#9654; <span id="metBpm">100</span></button>
+    <span class="metplays" id="metPlays"></span>
     <button class="btn sm" onclick="metBpmAdj(-1)" title="Slower">&#8722;</button>
     <button class="btn sm" onclick="metBpmAdj(1)" title="Faster">+</button>
     <button class="btn sm" id="metReset" onclick="metBpmReset()" title="Back to sheet tempo">&#8635;BPM</button>
@@ -158,7 +160,7 @@ function roleInstrument(role){
   const r=(role||'').toUpperCase();
   if(/DRUM/.test(r))      return {ava:'\u{1F941}',chords:false}; // drum kit
   if(/PERCUSS/.test(r))   return {ava:'\u{1FA98}',chords:false}; // percussion
-  if(/BASS/.test(r))      return {ava:'\u{1F3B8}',chords:true};  // bass guitar
+  if(/BASS/.test(r))      return {ava:'\u{1D122}',chords:true};  // bass guitar (bass-clef glyph)
   if(/SYNTH|PIANO|KEY/.test(r)) return {ava:'\u{1F3B9}',chords:true}; // keys
   if(/VIOLIN/.test(r))    return {ava:'\u{1F3BB}',chords:true};
   if(/VOCAL|SING/.test(r))return {ava:'\u{1F3A4}',chords:true};
@@ -490,11 +492,14 @@ function esc(t){return(t==null?'':String(t)).replace(/&/g,'&amp;').replace(/</g,
 
 // ===================== METRONOME =====================
 const MET_SOUNDS=['Beep','Wood','Click','Cowbell','Tick'];
-let met={on:false,bpm:100,baseBpm:100,beat:0,next:0,timer:null,sound:'Beep',vol:3};
+let met={on:false,bpms:[100],activeIdx:0,bpm:100,baseBpm:100,beat:0,next:0,timer:null,sound:'Beep',vol:3};
 try{const mp=JSON.parse(localStorage.getItem('aarpo_met')||'null');
   if(mp){if(MET_SOUNDS.indexOf(mp.sound)>=0)met.sound=mp.sound;if(typeof mp.vol==='number')met.vol=Math.max(0,Math.min(5,mp.vol));}}catch(e){}
 function metSavePrefs(){try{localStorage.setItem('aarpo_met',JSON.stringify({sound:met.sound,vol:met.vol}));}catch(e){}}
-function bpmFromTempo(t){const m=((t||'')+'').match(/\d+/);return m?parseInt(m[0],10):100;}
+// a song may list more than one tempo (e.g. "95 / 120" or "120 -> 160") -> one button each
+function bpmsFromTempo(t){const ns=((t||'')+'').match(/\d+/g);
+  let a=ns?ns.map(n=>parseInt(n,10)).filter(n=>n>=20&&n<=400):[];
+  a=a.filter((v,i)=>a.indexOf(v)===i);return a.length?a:[100];}
 function ensureAC(){AC=AC||new(window.AudioContext||window.webkitAudioContext)();if(AC.state==='suspended')AC.resume();return AC;}
 function metClick(time,accent){
   const v=(met.vol/5)*(accent?1:0.65); if(v<=0) return;
@@ -532,24 +537,44 @@ function metSchedule(){
   }
   met.timer=setTimeout(metSchedule,25);
 }
-function metStart(){if(met.on)return;ensureAC();met.on=true;met.beat=0;met.next=AC.currentTime+0.06;
-  const b=document.getElementById('metPlay');b.classList.add('on');b.innerHTML='&#10074;&#10074; <span id="metBpm">'+met.bpm+'</span>';
-  metSchedule();}
-function metStop(){met.on=false;if(met.timer)clearTimeout(met.timer);met.timer=null;
-  const b=document.getElementById('metPlay');if(b){b.classList.remove('on');b.innerHTML='&#9654; <span id="metBpm">'+met.bpm+'</span>';}
+// one play button per tempo; only one runs at a time (clicking another switches)
+function renderMetButtons(){
+  const c=document.getElementById('metPlays');if(!c)return;c.innerHTML='';
+  met.bpms.forEach((b,i)=>{const btn=document.createElement('button');
+    btn.className='btn sm metplay';btn.onclick=(function(idx){return function(){metPlayBpm(idx);};})(i);
+    c.appendChild(btn);});
+  updateMetButtons();
+}
+function updateMetButtons(){
+  const c=document.getElementById('metPlays');if(c){
+    const kids=c.children;
+    for(let i=0;i<kids.length;i++){const active=(i===met.activeIdx),playing=active&&met.on;
+      const val=active?met.bpm:met.bpms[i];
+      kids[i].classList.toggle('on',playing);kids[i].classList.toggle('sel',active&&!playing);
+      kids[i].innerHTML=(playing?'&#10074;&#10074; ':'&#9654; ')+val;}
+  }
+  const rb=document.getElementById('metReset');if(rb)rb.style.opacity=(met.bpm!==met.baseBpm)?'1':'.45';
+}
+function metStart(){if(met.on)return;ensureAC();met.on=true;met.beat=0;met.next=AC.currentTime+0.06;updateMetButtons();metSchedule();}
+function metStop(){met.on=false;if(met.timer)clearTimeout(met.timer);met.timer=null;updateMetButtons();
   const d=document.getElementById('metDot');if(d)d.classList.remove('beat','acc');}
-function metToggle(){met.on?metStop():metStart();}
-function metBpmShow(){const el=document.getElementById('metBpm');if(el)el.textContent=met.bpm;
-  const rb=document.getElementById('metReset');if(rb)rb.style.opacity=(met.bpm!==met.baseBpm)?'1':'.5';}
-function metBpmAdj(d){met.bpm=Math.max(30,Math.min(300,met.bpm+d));blip(d>0?760:560,0.03);metBpmShow();}
-function metBpmReset(){if(met.bpm===met.baseBpm)return;met.bpm=met.baseBpm;blip(440,0.04);metBpmShow();}
-function metSetSong(tempo){met.baseBpm=bpmFromTempo(tempo);met.bpm=met.baseBpm;metBpmShow();}
+function metPlayBpm(i){
+  if(met.on&&met.activeIdx===i){blip(440,0.04);metStop();return;}   // tap active = stop
+  met.activeIdx=i;met.baseBpm=met.bpms[i];met.bpm=met.baseBpm;blip(720,0.04);
+  if(!met.on){metStart();}                                          // switch tempo / start
+  else{met.beat=0;met.next=ensureAC().currentTime+0.06;updateMetButtons();}
+}
+function metToggle(){metPlayBpm(met.activeIdx);}                     // (keyboard fallback)
+function metBpmAdj(d){met.bpm=Math.max(30,Math.min(300,met.bpm+d));blip(d>0?760:560,0.03);updateMetButtons();}
+function metBpmReset(){if(met.bpm===met.baseBpm)return;met.bpm=met.baseBpm;blip(440,0.04);updateMetButtons();}
+function metSetSong(tempo){metStop();met.bpms=bpmsFromTempo(tempo);met.activeIdx=0;
+  met.baseBpm=met.bpms[0];met.bpm=met.baseBpm;renderMetButtons();}
 function metCycleSound(){const i=MET_SOUNDS.indexOf(met.sound);met.sound=MET_SOUNDS[(i+1)%MET_SOUNDS.length];
   document.getElementById('metSound').textContent=met.sound;metSavePrefs();ensureAC();metClick(AC.currentTime+0.01,true);}
 function metVolAdj(d){met.vol=Math.max(0,Math.min(5,met.vol+d));document.getElementById('metVol').textContent=met.vol;
   metSavePrefs();if(met.vol>0){ensureAC();metClick(AC.currentTime+0.01,false);}}
 function metInitUI(){document.getElementById('metSound').textContent=met.sound;
-  document.getElementById('metVol').textContent=met.vol;metBpmShow();}
+  document.getElementById('metVol').textContent=met.vol;renderMetButtons();}
 
 buildRoster();buildPlayers();metInitUI();show('screen-player');
 </script>
