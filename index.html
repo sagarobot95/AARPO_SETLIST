@@ -98,6 +98,7 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
   font-size:calc(var(--fs)*0.82);line-height:1.05;min-height:calc(var(--fs)*0.98);
   text-shadow:0 0 5px rgba(0,240,255,.45);}
 .ww{color:#fff;font-size:var(--fs);line-height:1.18;white-space:pre;}
+.wu.after .wc{opacity:.85;border-bottom:1px dotted rgba(0,240,255,.4);}  /* chord played after the line */
 .dim{opacity:.35;}
 .note{text-align:center;color:var(--yellow);font-size:22px;padding:40px;}
 .headrow{display:grid;grid-template-columns:1.1fr 1.15fr 1fr;gap:8px;padding:2px 6px;font-family:'Press Start 2P',monospace;font-size:9px;margin-bottom:3px;border-bottom:2px solid var(--neon);}
@@ -456,8 +457,9 @@ function alignedHtml(line,chords,tm){
     const c=m.ch[k]?esc(transposeChords(m.ch[k],tpose)):'';
     h+='<span class="wu"><span class="wc">'+c+'</span><span class="ww">'+esc(m.words[k])+'</span></span>';
   }
-  if(m.extra.length)
-    h+='<span class="wu"><span class="wc">'+esc(transposeChords(m.extra.join(' '),tpose))+'</span><span class="ww">&nbsp;</span></span>';
+  // chords that fall after the last word are intentional ("played after the line")
+  m.extra.forEach(function(x){
+    h+='<span class="wu after"><span class="wc">'+esc(transposeChords(x,tpose))+'</span><span class="ww">&nbsp;</span></span>';});
   return h+'</div>'+(tm||'');
 }
 // ---------- chord transposition (always spells with sharps, like the sheet) ----------
@@ -542,7 +544,9 @@ function renderSong(){
     }else{
       row.className='row';
       const lineTxt=lyrics?esc(firstWords(r.line,2)):esc(r.line);
-      const chordCell=CUR.chords?('<div class="c-chord">'+(chordTxt||'<span class="dim">&mdash;</span>')+'</div>'):'';
+      // compact (lyrics) keeps the old structure: first two words + plain chord list
+      const chShown=lyrics?esc(transposeChords(r.chords.replace(/\s+/g,' ').trim(),tpose)):chordTxt;
+      const chordCell=CUR.chords?('<div class="c-chord">'+(chShown||'<span class="dim">&mdash;</span>')+'</div>'):'';
       row.innerHTML='<div class="c-line">'+(lineTxt||'<span class="dim">(inst.)</span>')+tm+'</div>'+chordCell+mineHtml;
     }
     secEl.appendChild(row);
