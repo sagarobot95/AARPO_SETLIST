@@ -68,6 +68,9 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 .songinfo .key{background:var(--yellow);color:#000;}
 .songinfo .bpm{background:var(--cyan);color:#000;}
 .songinfo .tone{background:var(--green);color:#000;}
+.songinfo .piano{background:var(--purple);color:#fff;}
+#pianoBtn{background:var(--purple);color:#fff;}
+#pianoBtn.on{background:var(--green);color:#000;}
 .tposectl{display:flex;gap:4px;align-items:center;}
 .tposectl #tposeLbl{min-width:34px;text-align:center;background:var(--cyan);}
 .song-body{flex:1;min-height:0;overflow:hidden;column-gap:20px;column-fill:balance;}
@@ -141,6 +144,7 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
       <button class="btn sm" onclick="changeTpose(1)" title="Up a semitone">&#9839;</button>
     </span>
     <span class="fontctl">
+      <button class="btn sm" id="pianoBtn" title="Transpose to C / Am and show keyboard shift" onclick="togglePiano()" style="display:none;">&#127929;C</button>
       <button class="btn sm" id="layoutBtn" title="Lyrics sheet / Compact" onclick="toggleLayout()" style="display:none;background:#fff;">SHEET</button>
       <button class="btn sm" id="modeBtn" title="Fit-to-page / Scroll" onclick="toggleMode()">FIT</button>
       <button class="btn sm" onclick="bump(-1)">A&#8722;</button>
@@ -176,7 +180,7 @@ function roleInstrument(role){
   if(/DRUM/.test(r))      return {ava:'\u{1F941}',chords:false}; // drum kit
   if(/PERCUSS/.test(r))   return {ava:'\u{1FA98}',chords:false}; // percussion
   if(/BASS/.test(r))      return {ava:'\u{1D122}',chords:true};  // bass guitar (bass-clef glyph)
-  if(/SYNTH|PIANO|KEY/.test(r)) return {ava:'\u{1F3B9}',chords:true}; // keys
+  if(/SYNTH|PIANO|KEY/.test(r)) return {ava:'\u{1F3B9}',chords:true,keys:true}; // keys
   if(/VIOLIN/.test(r))    return {ava:'\u{1F3BB}',chords:true};
   if(/VOCAL|SING/.test(r))return {ava:'\u{1F3A4}',chords:true};
   return {ava:'\u{1F3B8}',chords:true};                          // guitars & default
@@ -192,9 +196,11 @@ function buildRoster(){
       if(ia<0)ia=999;if(ib<0)ib=999;return ia-ib||a.localeCompare(b);}).map(k=>({key:k,role:'Guitar'}));
   }
   PLAYERS=list.map((r,i)=>{const ins=roleInstrument(r.role);
-    return {key:r.key,role:r.role||ins.role||'',ava:ins.ava,chords:ins.chords,tag:'P'+(i+1)};});
+    return {key:r.key,role:r.role||ins.role||'',ava:ins.ava,chords:ins.chords,keys:!!ins.keys,tag:'P'+(i+1)};});
 }
 let CUR=null, curSongIndex=null, userFS=null, dataSource='built-in', lastSync=null, cbId=0, tpose=0;
+let pianoMode=false;
+try{pianoMode=localStorage.getItem('aarpo_piano')==='1';}catch(e){}
 
 try{
   const c=JSON.parse(localStorage.getItem('aarpo_data')||'null');
@@ -482,11 +488,32 @@ function transposeChords(text,steps){
     return transposeNote(L,acc,steps);
   });
 }
-function changeTpose(d){blip(d>0?700:500,0.05);
+function changeTpose(d){blip(d>0?700:500,0.05);pianoMode=false;   // manual transpose exits piano mode
   tpose=Math.max(-11,Math.min(11,tpose+d));updateTposeLabel();renderSong();}
-function resetTpose(){if(!tpose)return;blip(440,0.05);tpose=0;updateTposeLabel();renderSong();}
+function resetTpose(){blip(440,0.05);pianoMode=false;tpose=0;updateTposeLabel();renderSong();}
 function updateTposeLabel(){const el=document.getElementById('tposeLbl');
   if(el)el.textContent=(tpose>0?'+'+tpose:''+tpose);}
+// ---------- PIANO MODE: transpose song to C major / A minor (white keys) ----------
+// Reads the song key from LEGEND, returns the chord-transpose steps + the
+// signed keyboard-transpose shift the pianist should dial in.
+function parseKey(sc){
+  const m=((sc||'')+'').match(/([A-G])\s*(#|b|♯|♭)?\s*(maj|min|m)?/i);
+  if(!m) return null;
+  const note=(m[1]+(m[2]||'')).toUpperCase().replace('♯','#').replace('♭','B');
+  const root=NOTE_IDX[note]; if(root==null) return null;
+  const minor=!!(m[3] && /^(m|min)$/i.test(m[3]));
+  return {root:root,minor:minor};
+}
+function targetTranspose(s){
+  const pk=parseKey(s&&s.lg&&s.lg.scale); if(!pk) return null;
+  const target=pk.minor?9:0;                       // A for minor, C for major
+  const T=((target-pk.root)%12+12)%12;             // steps to transpose the chords
+  let shift=((pk.root-target)%12+12)%12; if(shift>6)shift-=12;  // signed keyboard shift
+  return {T:T,shift:shift,targetName:pk.minor?'Am':'C'};
+}
+function togglePiano(){if(!CUR||!CUR.keys)return;pianoMode=!pianoMode;blip(pianoMode?880:440,0.06);
+  try{localStorage.setItem('aarpo_piano',pianoMode?'1':'0');}catch(e){}
+  if(!pianoMode)tpose=0;renderSong();}
 
 function renderInfo(s){
   const el=document.getElementById('songInfo');const lg=s.lg;
@@ -505,15 +532,28 @@ function openSong(i){
 }
 function renderSong(){
   const s=DATA.songs[curSongIndex];
+  const isKeys=!!(CUR&&CUR.keys);
+  // piano mode: force-transpose to C / Am and show the keyboard shift
+  const pianoBtn=document.getElementById('pianoBtn');
+  pianoBtn.style.display=isKeys?'':'none';
+  let pianoBadge='';
+  if(pianoMode&&isKeys){
+    const pk=targetTranspose(s);
+    if(pk){tpose=pk.T;pianoBadge='<span class="k piano">\u{1F3B9} SHIFT '+(pk.shift>=0?'+':'')+pk.shift+' → '+pk.targetName+'</span>';}
+    else{tpose=0;pianoBadge='<span class="k piano">\u{1F3B9} key n/a</span>';}
+    pianoBtn.classList.add('on');
+  }else pianoBtn.classList.remove('on');
+  updateTposeLabel();
   const lyrics=isLyricsSong(s)&&CUR.chords;          // lyrics feature: chord players only
   const sheetMode=lyrics&&lyricsLayout==='sheet';
   document.getElementById('songTitle').textContent=s.name;
   document.getElementById('songMeta').innerHTML=String(curSongIndex+1).padStart(2,'0')+'/'+DATA.songs.length+' '+(CUR.role||'');
-  document.getElementById('tposeCtl').style.display=CUR.chords?'':'none';
+  document.getElementById('tposeCtl').style.display=(CUR.chords&&!(pianoMode&&isKeys))?'':'none';
   const lb=document.getElementById('layoutBtn');lb.style.display=lyrics?'':'none';
   if(lyrics)lb.textContent=(lyricsLayout==='sheet'?'SHEET':'COMPACT');
   document.getElementById('modeBtn').style.display=sheetMode?'none':'';   // sheet = scroll-only
   renderInfo(s);
+  if(pianoBadge){const si=document.getElementById('songInfo');si.innerHTML=pianoBadge+si.innerHTML;si.style.display='';}
   setHeadrow(lyrics,sheetMode);
   const body=document.getElementById('songBody');body.innerHTML='';
   body.classList.toggle('nochords', !CUR.chords);
