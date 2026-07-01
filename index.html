@@ -135,6 +135,8 @@ body::before{content:"";position:fixed;left:-50%;right:-50%;bottom:-20%;height:5
 <section id="screen-song">
   <div class="songbar">
     <button class="btn sm" onclick="goTracks()">&#9668; TRACKS</button>
+    <button class="btn sm" id="prevBtn" onclick="prevSong()" title="Previous track">&#9198;</button>
+    <button class="btn sm" id="nextBtn" onclick="nextSong()" title="Next track">&#9197;</button>
     <button class="btn sm" id="syncBtnSong" title="Sync from Google Sheets" onclick="syncFromSheets()">&#8635;</button>
     <span class="sname" id="songTitle"></span>
     <span class="meta" id="songMeta"></span>
@@ -244,6 +246,13 @@ function buildTracks(){const g=document.getElementById('trackGrid');g.innerHTML=
       '<div class="you">'+(youIn?'\u{1F3AF}':'')+'</div>';
     d.onclick=()=>{blip(550);openSong(i);};g.appendChild(d);});}
 function goTracks(){blip(330);metStop();userFS=null;show('screen-tracks');}
+function prevSong(){if(curSongIndex>0){blip(500,0.05);openSong(curSongIndex-1);}}
+function nextSong(){if(curSongIndex<DATA.songs.length-1){blip(620,0.05);openSong(curSongIndex+1);}}
+function updateNavBtns(){
+  const p=document.getElementById('prevBtn'),n=document.getElementById('nextBtn');
+  if(p)p.disabled=(curSongIndex<=0);
+  if(n)n.disabled=(curSongIndex>=DATA.songs.length-1);
+}
 
 function jsonp(name){
   return new Promise((resolve,reject)=>{
@@ -591,6 +600,7 @@ function renderSong(){
     }
     secEl.appendChild(row);
   });
+  updateNavBtns();
   show('screen-song');requestAnimationFrame(reflow);
 }
 function effMode(){   // sheet layout is scroll-only; otherwise the user's FIT/SCROLL choice
@@ -628,7 +638,8 @@ function toggleMode(){blip(520,0.05);
   updateModeBtn();reflow();}
 window.addEventListener('resize',()=>{if(document.body.classList.contains('songmode')&&curSongIndex!=null)reflow();});
 document.addEventListener('keydown',e=>{if(!document.body.classList.contains('songmode'))return;
-  if(e.key==='Escape')goTracks();if(e.key==='+'||e.key==='=')bump(1);if(e.key==='-')bump(-1);});
+  if(e.key==='Escape')goTracks();if(e.key==='+'||e.key==='=')bump(1);if(e.key==='-')bump(-1);
+  if(e.key==='ArrowRight')nextSong();if(e.key==='ArrowLeft')prevSong();});
 updateModeBtn();
 function esc(t){return(t==null?'':String(t)).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
